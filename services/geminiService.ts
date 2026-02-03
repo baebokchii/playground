@@ -7,40 +7,36 @@ export const getFoodRecommendation = async (
   weather: Weather,
   location: LocationData | null
 ): Promise<Recommendation> => {
-  // 새 인스턴스 생성 (최신 API 키 반영 보장)
+  // 새 인스턴스 생성 (API 키 접근 보장)
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
-  // 기본 위치: HKUST (사용자 위치 정보가 없을 경우 대비)
+  // 기본 위치: HKUST
   const lat = location?.latitude || 22.3364;
   const lng = location?.longitude || 114.2655;
 
-  const randomnessSeed = Math.floor(Math.random() * 1000);
-
   const prompt = `
-    당신은 홍콩과학기술대학교(HKUST) 학생들을 위한 최고의 미식 큐레이터입니다. 
-    오늘의 기분(${mood})과 날씨(${weather})를 조합해 지금 이 순간 가장 완벽한 메뉴를 하나 추천해 주세요.
-    
-    위치 정보: 위도 ${lat}, 경도 ${lng} (HKUST 캠퍼스 근처)
+    당신은 홍콩과학기술대학교(HKUST) 캠퍼스 미식 전문가입니다.
+    사용자 상태: 기분(${mood}), 날씨(${weather})
+    위치: HKUST 캠퍼스 근처 (위도 ${lat}, 경도 ${lng})
 
     요구사항:
-    1. 음식 장르는 제한 없으나, 캠퍼스 생활에 활력을 줄 수 있는 메뉴여야 합니다.
-    2. 'googleMaps' 도구를 사용하여 해당 메뉴를 실제로 판매하는 HKUST 캠퍼스 내 혹은 인근(Hang Hau, Sai Kung 등) 식당 2곳을 찾으세요.
-    3. 반드시 실제 존재하는 식당이어야 하며, 도서관이나 강의실 등 식당이 아닌 곳은 제외하세요.
-    4. 아래 형식을 엄격히 지켜 답변하세요:
+    1. 이 상황에 어울리는 구체적인 메뉴 1개를 선정하세요.
+    2. 'googleMaps' 도구를 사용해 HKUST 캠퍼스 내 혹은 항하우(Hang Hau) 지역의 실제 식당 2곳을 찾으세요.
+    3. 반드시 아래 형식을 포함해 답변하세요 (데이터 추출을 위해 매우 중요함):
     
-    [메뉴: 메뉴이름(영문명)]
-    [이유: 추천 이유 2문장]
-    [날씨: 날씨 조화 코멘트]
-    [식당: 식당이름1, 식당이름2]
+    [메뉴: 메뉴이름]
+    [이유: 추천 이유 설명]
+    [날씨: 날씨 관련 코멘트]
+    [식당: 식당명1, 식당명2]
   `;
 
   try {
+    // Maps Grounding은 Gemini 2.5 시리즈 모델에서 지원됨
     const response = await ai.models.generateContent({
-      // CRITICAL FIX: Google Maps grounding is only supported in Gemini 2.5 series
-      model: "gemini-2.5-flash-lite-latest",
+      model: "gemini-2.5-flash", 
       contents: prompt,
       config: {
-        temperature: 0.9,
+        temperature: 0.8,
         tools: [{ googleMaps: {} }, { googleSearch: {} }],
         toolConfig: {
           retrievalConfig: {
@@ -54,33 +50,41 @@ export const getFoodRecommendation = async (
     });
 
     const text = response.text || "";
-    
-    // 데이터 추출
-    const dishName = text.match(/\[메뉴:\s*(.*?)\]/)?.[1] || "스페셜 메뉴";
-    const reasoning = text.match(/\[이유:\s*(.*?)\]/)?.[1] || "오늘 당신의 기분과 날씨에 딱 맞는 최고의 선택이에요.";
-    const weatherContext = text.match(/\[날씨:\s*(.*?)\]/)?.[1] || "오늘 날씨와 아주 잘 어울려요.";
-    const restaurantNames = text.match(/\[식당:\s*(.*?)\]/)?.[1]?.split(',').map(s => s.trim()) || [];
+    if (!text) throw new Error("API가 빈 응답을 반환했습니다.");
+
+    // 유연한 데이터 추출 로직
+    const extract = (tag: string, fallback: string) => {
+      const regex = new RegExp(`\\[${tag}:\\s*(.*?)\\]`, 'i');
+      const match = text.match(regex);
+      return match ? match[1].trim() : fallback;
+    };
+
+    const dishName = extract("메뉴", "오늘의 추천 메뉴");
+    const reasoning = extract("이유", text.split('\n')[0] || "당신의 기분과 날씨를 고려한 최고의 선택입니다.");
+    const weatherContext = extract("날씨", "오늘 날씨에 정말 잘 어울리는 메뉴예요.");
+    const rawRestaurants = extract("식당", "");
 
     const places: Place[] = [];
     const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
     
-    // 식당 정보 매칭 및 생성
+    // 1. 구글 지도 Grounding 데이터에서 식당 정보 추출
     for (const chunk of chunks) {
       if (chunk.maps && chunk.maps.title) {
-        if (!places.some(p => p.uri === chunk.maps?.uri)) {
+        if (!places.some(p => p.title === chunk.maps?.title)) {
           places.push({
             title: chunk.maps.title,
             uri: chunk.maps.uri || `https://www.google.com/maps/search/${encodeURIComponent(chunk.maps.title)}`,
-            rating: "4.2+"
+            rating: "4.1+"
           });
         }
       }
     }
 
-    // Grounding에서 부족할 경우 텍스트에서 추출한 이름으로 보완
-    if (places.length === 0 && restaurantNames.length > 0) {
-      restaurantNames.forEach(name => {
-        if (name && name.length > 1) {
+    // 2. 텍스트에서 명시된 식당명이 Grounding에 없을 경우 보완
+    if (places.length < 2 && rawRestaurants) {
+      const names = rawRestaurants.split(',').map(n => n.trim()).filter(n => n.length > 0);
+      names.forEach(name => {
+        if (!places.some(p => p.title.includes(name) || name.includes(p.title))) {
           places.push({
             title: name,
             uri: `https://www.google.com/maps/search/${encodeURIComponent(name)}`,
@@ -90,12 +94,12 @@ export const getFoodRecommendation = async (
       });
     }
 
-    // 이미지 생성 (별도 호출)
+    // 이미지 생성
     let imageUrl: string | undefined;
     try {
       imageUrl = await generateFoodImage(dishName);
     } catch (e) {
-      console.warn("Image generation failed", e);
+      console.warn("이미지 생성 실패:", e);
     }
 
     return { 
@@ -106,8 +110,8 @@ export const getFoodRecommendation = async (
       places: places.length > 0 ? places.slice(0, 2) : undefined
     };
   } catch (error) {
-    console.error("Gemini API Error:", error);
-    throw error; // App.tsx의 catch 블록으로 전달
+    console.error("Gemini 서비스 상세 에러:", error);
+    throw error; 
   }
 };
 
@@ -116,15 +120,11 @@ const generateFoodImage = async (dishName: string): Promise<string | undefined> 
   const response = await ai.models.generateContent({
     model: 'gemini-2.5-flash-image',
     contents: {
-      parts: [{ text: `A vibrant, high-quality close-up photograph of ${dishName}. Professional food photography, delicious lighting, soft background, 4k.` }],
+      parts: [{ text: `A professional, appetizing food photography of ${dishName}. High resolution, beautiful plating, soft natural lighting, macro shot.` }],
     },
     config: { imageConfig: { aspectRatio: "1:1" } },
   });
 
-  for (const part of response.candidates?.[0]?.content?.parts || []) {
-    if (part.inlineData) {
-      return `data:image/png;base64,${part.inlineData.data}`;
-    }
-  }
-  return undefined;
+  const part = response.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
+  return part?.inlineData ? `data:image/png;base64,${part.inlineData.data}` : undefined;
 };
