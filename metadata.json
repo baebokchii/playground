@@ -1,0 +1,7 @@
+{
+  "name": "오밥뭐? (HKUST)",
+  "description": "GPS를 통한 실시간 날씨와 기분을 분석하여 HKUST 캠퍼스 라이프에 딱 맞는 메뉴를 추천합니다.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
