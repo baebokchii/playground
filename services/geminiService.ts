@@ -1,6 +1,6 @@
 
 import { GoogleGenAI } from "@google/genai";
-import { Mood, Weather, LocationData, Recommendation, Place } from "../types";
+import { Mood, Weather, LocationData, Recommendation, Place } from "../types.ts";
 
 export const getFoodRecommendation = async (
   mood: Mood,
@@ -42,10 +42,10 @@ export const getFoodRecommendation = async (
   `;
 
   const response = await ai.models.generateContent({
-    model: "gemini-2.5-flash",
+    model: "gemini-3-flash-preview",
     contents: prompt,
     config: {
-      temperature: 1.0, // 더 높은 창의성과 랜덤성을 위해 1.0으로 조정
+      temperature: 1.0,
       tools: [{ googleMaps: {} }, { googleSearch: {} }],
       toolConfig: {
         retrievalConfig: {

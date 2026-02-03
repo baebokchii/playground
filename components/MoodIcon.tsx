@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Mood } from '../types';
+import { Mood } from '../types.ts';
 import { motion } from 'framer-motion';
 
 interface MoodIconProps {

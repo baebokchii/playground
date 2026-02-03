@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Weather } from '../types';
+import { Weather } from '../types.ts';
 import { motion } from 'framer-motion';
 
 interface WeatherIconProps {
