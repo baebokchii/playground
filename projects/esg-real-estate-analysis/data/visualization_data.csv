@@ -1,0 +1,29 @@
+Chart_Group,Series,Category,Value,Unit,Chart_Suggestion
+Benchmark_Payback,Target_Recreated_Project,Payback_Years,6.1,years,Clustered column
+Benchmark_Payback,Peer_A_GreenCourt,Payback_Years,6.8,years,Clustered column
+Benchmark_Payback,Peer_B_HarborLiving,Payback_Years,5.7,years,Clustered column
+Benchmark_Payback,Peer_C_OakTerrace,Payback_Years,7.3,years,Clustered column
+Benchmark_Payback,Peer_D_RiverPoint,Payback_Years,5.9,years,Clustered column
+Benchmark_Payback,Peer_E_MapleResidences,Payback_Years,6.2,years,Clustered column
+Scenario_NOI,Downside,Year_1,180068,USD,Multi-series line
+Scenario_NOI,Downside,Year_2,193043,USD,Multi-series line
+Scenario_NOI,Downside,Year_3,206054,USD,Multi-series line
+Scenario_NOI,Downside,Year_4,219111,USD,Multi-series line
+Scenario_NOI,Downside,Year_5,232221,USD,Multi-series line
+Scenario_NOI,Base,Year_1,296263,USD,Multi-series line
+Scenario_NOI,Base,Year_2,317370,USD,Multi-series line
+Scenario_NOI,Base,Year_3,338801,USD,Multi-series line
+Scenario_NOI,Base,Year_4,360789,USD,Multi-series line
+Scenario_NOI,Base,Year_5,383445,USD,Multi-series line
+Scenario_NOI,Upside,Year_1,487800,USD,Multi-series line
+Scenario_NOI,Upside,Year_2,517962,USD,Multi-series line
+Scenario_NOI,Upside,Year_3,548861,USD,Multi-series line
+Scenario_NOI,Upside,Year_4,580914,USD,Multi-series line
+Scenario_NOI,Upside,Year_5,613703,USD,Multi-series line
+Impact_Margin,Downside,5Y_Average,2.40,percent,Horizontal bar
+Impact_Margin,Base,5Y_Average,3.90,percent,Horizontal bar
+Impact_Margin,Upside,5Y_Average,6.22,percent,Horizontal bar
+NOI_Bridge,Starting_Point,Initial_CapEx,-2000000,USD,Waterfall
+NOI_Bridge,Add,5Y_Downside_NOI,1030497,USD,Waterfall
+NOI_Bridge,Add,5Y_Base_NOI,1696668,USD,Waterfall
+NOI_Bridge,Add,5Y_Upside_NOI,2749240,USD,Waterfall

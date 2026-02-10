@@ -1,0 +1,19 @@
+Scenario,Year,Revenue_USD,Utility_Savings_USD,Incremental_ESG_Opex_USD,Net_Operating_Impact_USD,Impact_Margin_pct,Notes
+Downside,1,8183868,143200,145000,180068,2.20,Conservative realization
+Downside,2,8388465,148928,149350,193043,2.30,Gradual performance ramp
+Downside,3,8598177,154885,153831,206054,2.40,Stabilizing benefits
+Downside,4,8813132,161081,158446,219111,2.49,Consistent savings growth
+Downside,5,9033459,167525,163199,232221,2.57,No major upside capture
+Base,1,8268263,218000,145000,296263,3.58,Expected execution quality
+Base,2,8474969,226720,149350,317370,3.74,Higher savings with escalation
+Base,3,8686843,235789,153831,338801,3.90,Rent and occupancy translate
+Base,4,8904014,245221,158446,360789,4.05,Steady margin expansion
+Base,5,9126614,255030,163199,383445,4.20,Compounding benefits
+Upside,1,8404368,292800,145000,487800,5.81,Strong market receptivity
+Upside,2,8614477,304512,149350,517962,6.01,High premium persistence
+Upside,3,8829839,316692,153831,548861,6.22,Operational excellence case
+Upside,4,9050585,329360,158446,580914,6.42,Sustained top quartile performance
+Upside,5,9276849,342535,163199,613703,6.62,Full potential realization
+TOTAL_Downside,5Y_Total,43017099,775619,769826,1030497,2.40,Aggregate five-year impact
+TOTAL_Base,5Y_Total,43460703,1180760,769826,1696668,3.90,Aggregate five-year impact
+TOTAL_Upside,5Y_Total,44176118,1585899,769826,2749240,6.22,Aggregate five-year impact

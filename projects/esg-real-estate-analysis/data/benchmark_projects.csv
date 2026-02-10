@@ -1,0 +1,7 @@
+Project,Market,Asset_Type,Units,ESG_CapEx_USD,CapEx_per_Unit_USD,Energy_Savings_pct,Water_Savings_pct,Rent_Premium_pct,Occupancy_Change_pct,Simple_Payback_Years,Notes
+Target_Recreated_Project,Sunbelt_US,Multifamily,220,2000000,9091,18,13,1.2,0.8,6.1,Recreated base-case profile
+Peer_A_GreenCourt,Denver_US,Multifamily,198,1750000,8838,16,10,1.0,0.6,6.8,Mid-scale retrofit scope
+Peer_B_HarborLiving,Boston_US,Multifamily,245,2650000,10816,21,14,1.7,1.1,5.7,High tenant demand submarket
+Peer_C_OakTerrace,Austin_US,Multifamily,210,1580000,7524,14,9,0.8,0.5,7.3,Cost-focused implementation
+Peer_D_RiverPoint,Seattle_US,Multifamily,230,2420000,10522,20,15,1.5,1.0,5.9,Strong sustainability branding
+Peer_E_MapleResidences,Chicago_US,Multifamily,260,2780000,10692,19,12,1.3,0.9,6.2,Balanced execution quality
