@@ -1,0 +1,26 @@
+Category,Variable,Value,Unit,Notes
+Asset,Units,220,count,Representative multifamily property
+Asset,Rentable_SF,285000,sf,Total rentable square footage
+Revenue,Baseline_Gross_Potential_Rent,8720000,USD per year,Before ESG premium
+Revenue,Baseline_Occupancy,0.93,ratio,Pre-upgrade stabilized occupancy
+Revenue,Annual_Rent_Growth,0.025,ratio,Applied across all scenarios
+ESG,Rent_Premium_Downside,0.005,ratio,Lower tenant willingness to pay
+ESG,Rent_Premium_Base,0.012,ratio,Expected premium realization
+ESG,Rent_Premium_Upside,0.02,ratio,Strong positioning outcome
+ESG,Occupancy_Uplift_Downside,0.003,ratio,Incremental vs baseline
+ESG,Occupancy_Uplift_Base,0.008,ratio,Incremental vs baseline
+ESG,Occupancy_Uplift_Upside,0.015,ratio,Incremental vs baseline
+Utilities,Baseline_Energy_Cost,980000,USD per year,Electricity and gas
+Utilities,Baseline_Water_Cost,320000,USD per year,Water and sewage
+Utilities,Energy_Reduction_Downside,0.12,ratio,Realized post-retrofit savings
+Utilities,Energy_Reduction_Base,0.18,ratio,Realized post-retrofit savings
+Utilities,Energy_Reduction_Upside,0.24,ratio,Realized post-retrofit savings
+Utilities,Water_Reduction_Downside,0.08,ratio,Realized post-retrofit savings
+Utilities,Water_Reduction_Base,0.13,ratio,Realized post-retrofit savings
+Utilities,Water_Reduction_Upside,0.18,ratio,Realized post-retrofit savings
+Costs,ESG_Incremental_Opex_Y1,145000,USD per year,Monitoring and maintenance
+Costs,Opex_Growth,0.03,ratio,Applied annually
+Inflation,Utility_Inflation,0.04,ratio,Applied to baseline utility spend
+Investment,Initial_CapEx,2000000,USD,Total ESG package
+Investment,Incentives_and_Grants,350000,USD,One-time benefit
+Valuation,Exit_Cap_Rate,0.052,ratio,Used for implied value uplift
