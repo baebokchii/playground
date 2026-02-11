@@ -1,6 +1,6 @@
 -- ==================================================================================================
 -- 02_feature_mart.sql
--- Project : Olist HK Free Shipping Strategy (Portfolio)
+-- Project : Olist Free Shipping Policy Optimization (Portfolio)
 -- Goal    : Build reusable feature marts for policy validation and business storytelling.
 -- DB      : olist_portfolio (schemas: raw, marts, analytics)
 -- --------------------------------------------------------------------------------------------------
@@ -90,7 +90,7 @@ Feature rationale:
 - freight_price_ratio         : normalizes shipping burden by item price.
 - delivery_days / delay_days  : customer experience and SLA adherence.
 - distance_km                 : explanatory variable for freight and delivery time.
-- hk_* flags                  : simulation-ready tags aligned with HK policy storytelling.
+- policy_* flags              : simulation-ready tags for shipping policy experimentation.
 */
 DROP TABLE IF EXISTS marts.fact_order_item_enriched;
 CREATE TABLE marts.fact_order_item_enriched AS
@@ -132,20 +132,20 @@ SELECT
   END AS is_free_shipping_item,
   -- Month key for trend and cohort analysis.
   DATE_FORMAT(b.order_purchase_timestamp, '%Y-%m') AS order_month,
-  -- HK localization helper buckets for policy segmentation.
+  -- Generic segmentation helper buckets for policy analysis.
   CASE
     WHEN b.product_weight_g IS NULL THEN 'unknown'
     WHEN b.product_weight_g < 500 THEN 'light'
     WHEN b.product_weight_g < 2000 THEN 'medium'
     ELSE 'heavy'
-  END AS hk_weight_band,
+  END AS policy_weight_band,
   CASE
     WHEN b.price IS NULL THEN 'unknown'
     WHEN b.price < 50 THEN 'A_0_49'
     WHEN b.price < 120 THEN 'B_50_119'
     WHEN b.price < 200 THEN 'C_120_199'
     ELSE 'D_200_plus'
-  END AS hk_price_band
+  END AS policy_price_band
 FROM marts.stg_order_item_joined b
 LEFT JOIN marts.dim_zip_geo cz
   ON b.customer_zip_code_prefix = cz.zip_code_prefix
@@ -157,8 +157,8 @@ ALTER TABLE marts.fact_order_item_enriched
   ADD KEY idx_fact_seller_month (seller_id, order_month),
   ADD KEY idx_fact_free_item (is_free_shipping_item),
   ADD KEY idx_fact_distance (distance_km),
-  ADD KEY idx_fact_weight_band (hk_weight_band),
-  ADD KEY idx_fact_price_band (hk_price_band);
+  ADD KEY idx_fact_weight_band (policy_weight_band),
+  ADD KEY idx_fact_price_band (policy_price_band);
 /*
 [Chunk D] Order-grain metrics table
 Why aggregate from item -> order:
@@ -181,19 +181,19 @@ SELECT
   AVG(freight_price_ratio) AS avg_freight_ratio,
   SUM(IFNULL(product_weight_g, 0)) AS total_weight_g,
   CASE WHEN SUM(IFNULL(freight_value, 0)) = 0 THEN 1 ELSE 0 END AS is_free_shipping_order,
-  -- Example HK strategy switch: threshold + distance cap.
+  -- Example policy switch: threshold + distance cap.
   CASE
     WHEN SUM(IFNULL(price, 0)) >= 120
          AND IFNULL(AVG(distance_km), 999) <= 15
     THEN 1 ELSE 0
-  END AS hk_sim_free_ship_flag
+  END AS policy_sim_free_ship_flag
 FROM marts.fact_order_item_enriched
 GROUP BY order_id;
 ALTER TABLE marts.order_level_metrics
   ADD PRIMARY KEY (order_id),
   ADD KEY idx_olm_month (order_month),
   ADD KEY idx_olm_free_order (is_free_shipping_order),
-  ADD KEY idx_olm_sim_flag (hk_sim_free_ship_flag);
+  ADD KEY idx_olm_sim_flag (policy_sim_free_ship_flag);
 /*
 [Chunk E] Join review signals to order metrics
 Why average review at order_id:
@@ -233,7 +233,7 @@ SELECT
   AVG(avg_freight_ratio) AS avg_freight_ratio,
   AVG(review_score) AS avg_review_score,
   AVG(is_free_shipping_order) AS free_shipping_order_rate,
-  AVG(hk_sim_free_ship_flag) AS hk_sim_apply_rate
+  AVG(policy_sim_free_ship_flag) AS policy_sim_apply_rate
 FROM marts.order_review_metrics
 GROUP BY order_month;
 ALTER TABLE marts.agg_monthly_kpi
@@ -254,7 +254,7 @@ SELECT
   AVG(delivery_days) AS avg_delivery_days,
   AVG(distance_km) AS avg_distance_km,
   AVG(CASE WHEN IFNULL(freight_value, 0) = 0 THEN 1 ELSE 0 END) AS free_shipping_item_rate,
-  AVG(CASE WHEN hk_weight_band = 'heavy' THEN 1 ELSE 0 END) AS heavy_item_mix_rate
+  AVG(CASE WHEN policy_weight_band = 'heavy' THEN 1 ELSE 0 END) AS heavy_item_mix_rate
 FROM marts.fact_order_item_enriched
 GROUP BY seller_id, order_month;
 ALTER TABLE marts.agg_seller_monthly_kpi

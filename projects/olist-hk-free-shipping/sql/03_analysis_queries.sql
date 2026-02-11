@@ -1,6 +1,6 @@
 -- ==================================================================================================
 -- 03_analysis_queries.sql
--- Project : Olist HK Free Shipping Strategy (Portfolio)
+-- Project : Olist Free Shipping Policy Optimization (Portfolio)
 -- Goal    : Produce interview-ready analysis outputs validating free-shipping feasibility.
 -- DB      : olist_portfolio (source: marts, output helpers: analytics)
 -- ==================================================================================================
@@ -105,20 +105,20 @@ SELECT
   avg_distance_km,
   avg_review_score,
   free_shipping_order_rate,
-  hk_sim_apply_rate
+  policy_sim_apply_rate
 FROM marts.agg_monthly_kpi;
 SELECT *
 FROM analytics.v_monthly_corr_input
 ORDER BY order_month;
 /*
-[Chunk G] HK policy simulation (threshold + distance cap)
+[Chunk G] Policy simulation (threshold + distance cap)
 - This is the main policy what-if analysis.
 - Subsidy cost estimate = freight we would waive when policy applies.
 */
 SET @threshold_hkd = 120;
 SET @distance_cap_km = 15;
-DROP TABLE IF EXISTS analytics.sim_hk_policy_monthly;
-CREATE TABLE analytics.sim_hk_policy_monthly AS
+DROP TABLE IF EXISTS analytics.sim_policy_monthly;
+CREATE TABLE analytics.sim_policy_monthly AS
 WITH simulated AS (
   SELECT
     order_id,
@@ -145,7 +145,7 @@ SELECT
 FROM simulated
 GROUP BY order_month;
 SELECT *
-FROM analytics.sim_hk_policy_monthly
+FROM analytics.sim_policy_monthly
 ORDER BY order_month;
 /*
 [Chunk H] Seller before/after diagnostic table

@@ -1,5 +1,5 @@
 """
-End-to-end analysis runner for Olist HK free-shipping strategy.
+End-to-end analysis runner for shipping-policy optimization strategy.
 
 This script assumes you already built marts/analytics objects via:
   1) sql/01_schema_and_load.sql
@@ -26,7 +26,7 @@ from sqlalchemy import create_engine, text
 # CLI + connection helpers
 # ------------------------------
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Olist HK free-shipping analysis")
+    parser = argparse.ArgumentParser(description="Olist free-shipping analysis")
     parser.add_argument("--host", default="localhost")
     parser.add_argument("--port", default=3306, type=int)
     parser.add_argument("--user", required=True)
@@ -78,7 +78,7 @@ def fetch_dataframes(engine):
                 order_gmv,
                 order_freight,
                 is_free_shipping_order,
-                hk_sim_free_ship_flag,
+                policy_sim_free_ship_flag,
                 avg_delivery_days,
                 avg_distance_km,
                 review_score
@@ -102,7 +102,7 @@ def fetch_dataframes(engine):
         text(
             """
             SELECT *
-            FROM analytics.sim_hk_policy_monthly
+            FROM analytics.sim_policy_monthly
             ORDER BY order_month
             """
         ),
@@ -148,7 +148,7 @@ def uplift_analysis(order_review: pd.DataFrame) -> pd.DataFrame:
 
 def simulation_uplift_analysis(order_review: pd.DataFrame) -> pd.DataFrame:
     summary = (
-        order_review.groupby("hk_sim_free_ship_flag", dropna=False)
+        order_review.groupby("policy_sim_free_ship_flag", dropna=False)
         .agg(
             orders=("order_id", "nunique"),
             avg_gmv=("order_gmv", "mean"),
@@ -159,9 +159,9 @@ def simulation_uplift_analysis(order_review: pd.DataFrame) -> pd.DataFrame:
         .reset_index()
     )
     summary["segment"] = np.where(
-        summary["hk_sim_free_ship_flag"] == 1,
-        "HK_Policy_Eligible",
-        "HK_Policy_NotEligible",
+        summary["policy_sim_free_ship_flag"] == 1,
+        "Policy_Eligible",
+        "Policy_NotEligible",
     )
     return summary
 
@@ -286,16 +286,16 @@ def build_recommendation_text(
     )
 
     recommendation = f"""
-[HK Free Shipping Strategy Recommendation]
+[Free Shipping Policy Recommendation]
 1) Freight vs Orders correlation: {corr_ship_order:.3f} (negative is better for free-shipping rationale).
 2) Free-shipping orders have {gmv_delta_pct:.1f}% higher average order GMV than paid-shipping orders.
 3) Review score delta (Free - Paid): {review_delta:.3f}, and t-test is {sig} (p={p_val:.4g}).
 4) {seller_line}
-5) HK simulation average apply-rate: {avg_apply_rate:.2%}.
+5) Policy simulation average apply-rate: {avg_apply_rate:.2%}.
 6) Estimated subsidy burden ratio: {avg_subsidy:.2f}% of GMV.
 
 Action:
-- Run a 2-month pilot in Hong Kong with threshold-based free shipping.
+- Run a 2-month pilot with threshold-based free shipping.
 - Set subsidy caps by distance and item weight.
 - Track post-campaign retention and repeat purchase rate before full rollout.
 """.strip()
@@ -332,10 +332,10 @@ def main() -> None:
     corr_input.to_csv(outdir / "monthly_corr_input.csv", index=False)
     corr_df.to_csv(outdir / "correlation_matrix.csv")
     uplift_df.to_csv(outdir / "shipping_segment_uplift.csv", index=False)
-    sim_uplift_df.to_csv(outdir / "hk_policy_eligibility_uplift.csv", index=False)
+    sim_uplift_df.to_csv(outdir / "policy_eligibility_uplift.csv", index=False)
     ttest_df.to_csv(outdir / "ttest_review_score.csv", index=False)
     seller_uplift_df.to_csv(outdir / "seller_campaign_uplift.csv", index=False)
-    policy_sim.to_csv(outdir / "hk_policy_monthly_simulation.csv", index=False)
+    policy_sim.to_csv(outdir / "policy_monthly_simulation.csv", index=False)
 
     (outdir / "recommendation.txt").write_text(recommendation, encoding="utf-8")
 

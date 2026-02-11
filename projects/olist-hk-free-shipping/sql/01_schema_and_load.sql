@@ -1,6 +1,6 @@
 -- ==================================================================================================
 -- 01_schema_and_load.sql
--- Project : Olist HK Free Shipping Strategy (Portfolio)
+-- Project : Olist Free Shipping Policy Optimization (Portfolio)
 -- Goal    : Create an idempotent 3-layer warehouse structure and load raw CSV files safely.
 -- DB      : MySQL 8+
 -- --------------------------------------------------------------------------------------------------
