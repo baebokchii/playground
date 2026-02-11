@@ -56,7 +56,6 @@ Because Olist is Brazil-based data, we define a **market localization layer** fo
    - `marts.agg_monthly_kpi`
    - `marts.agg_seller_monthly_kpi`
 4. Add distance (Haversine), delivery duration, freight ratio, free-shipping flags.
-   - Scripts are now split into small chunks with detailed reasoning comments for study purpose.
 
 ### Step B. Exploratory + Causal-leaning Analysis in Python
 1. Pull marts using SQLAlchemy.
