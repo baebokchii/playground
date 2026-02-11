@@ -1,9 +1,14 @@
 """
-End-to-end analysis runner for Olist HK free shipping strategy.
+End-to-end analysis runner for Olist HK free-shipping strategy.
+
+This script assumes you already built marts/analytics objects via:
+  1) sql/01_schema_and_load.sql
+  2) sql/02_feature_mart.sql
+  3) sql/03_analysis_queries.sql
 
 Usage example:
 python analysis_free_shipping_hk.py \
-  --host localhost --port 3306 --user root --password 'pw' --database olist_hk
+  --host localhost --port 3306 --user root --password 'pw' --database olist_portfolio
 """
 
 from __future__ import annotations
@@ -17,13 +22,16 @@ from scipy import stats
 from sqlalchemy import create_engine, text
 
 
+# ------------------------------
+# CLI + connection helpers
+# ------------------------------
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Olist HK free-shipping analysis")
     parser.add_argument("--host", default="localhost")
     parser.add_argument("--port", default=3306, type=int)
     parser.add_argument("--user", required=True)
     parser.add_argument("--password", required=True)
-    parser.add_argument("--database", default="olist_hk")
+    parser.add_argument("--database", default="olist_portfolio")
     parser.add_argument("--outdir", default="../outputs")
     return parser.parse_args()
 
@@ -35,12 +43,15 @@ def build_engine(args: argparse.Namespace):
     return create_engine(conn_str)
 
 
+# ------------------------------
+# Data extraction (SQL -> Pandas)
+# ------------------------------
 def fetch_dataframes(engine):
     monthly = pd.read_sql(
         text(
             """
             SELECT *
-            FROM agg_monthly_kpi
+            FROM marts.agg_monthly_kpi
             ORDER BY order_month
             """
         ),
@@ -51,7 +62,7 @@ def fetch_dataframes(engine):
         text(
             """
             SELECT *
-            FROM v_monthly_corr_input
+            FROM analytics.v_monthly_corr_input
             ORDER BY order_month
             """
         ),
@@ -67,10 +78,11 @@ def fetch_dataframes(engine):
                 order_gmv,
                 order_freight,
                 is_free_shipping_order,
+                hk_sim_free_ship_flag,
                 avg_delivery_days,
                 avg_distance_km,
                 review_score
-            FROM order_review_metrics
+            FROM marts.order_review_metrics
             """
         ),
         engine,
@@ -80,19 +92,38 @@ def fetch_dataframes(engine):
         text(
             """
             SELECT *
-            FROM agg_seller_monthly_kpi
+            FROM marts.agg_seller_monthly_kpi
             """
         ),
         engine,
     )
 
-    return monthly, corr_input, order_review, seller_monthly
+    policy_sim = pd.read_sql(
+        text(
+            """
+            SELECT *
+            FROM analytics.sim_hk_policy_monthly
+            ORDER BY order_month
+            """
+        ),
+        engine,
+    )
+
+    return monthly, corr_input, order_review, seller_monthly, policy_sim
 
 
+# ------------------------------
+# Analysis blocks
+# ------------------------------
 def correlation_analysis(corr_input: pd.DataFrame) -> pd.DataFrame:
-    cols = ["avg_delivery_days", "avg_distance_km", "order_count", "avg_freight_per_order"]
-    corr_df = corr_input[cols].corr(method="pearson")
-    return corr_df
+    cols = [
+        "avg_delivery_days",
+        "avg_distance_km",
+        "order_count",
+        "avg_freight_per_order",
+        "free_shipping_order_rate",
+    ]
+    return corr_input[cols].corr(method="pearson")
 
 
 def uplift_analysis(order_review: pd.DataFrame) -> pd.DataFrame:
@@ -111,6 +142,26 @@ def uplift_analysis(order_review: pd.DataFrame) -> pd.DataFrame:
         summary["is_free_shipping_order"] == 1,
         "FreeShipping",
         "PaidShipping",
+    )
+    return summary
+
+
+def simulation_uplift_analysis(order_review: pd.DataFrame) -> pd.DataFrame:
+    summary = (
+        order_review.groupby("hk_sim_free_ship_flag", dropna=False)
+        .agg(
+            orders=("order_id", "nunique"),
+            avg_gmv=("order_gmv", "mean"),
+            avg_freight=("order_freight", "mean"),
+            avg_delivery_days=("avg_delivery_days", "mean"),
+            avg_review=("review_score", "mean"),
+        )
+        .reset_index()
+    )
+    summary["segment"] = np.where(
+        summary["hk_sim_free_ship_flag"] == 1,
+        "HK_Policy_Eligible",
+        "HK_Policy_NotEligible",
     )
     return summary
 
@@ -206,6 +257,7 @@ def build_recommendation_text(
     uplift_df: pd.DataFrame,
     ttest_df: pd.DataFrame,
     seller_uplift_df: pd.DataFrame,
+    policy_sim: pd.DataFrame,
 ) -> str:
     corr_ship_order = corr_df.loc["order_count", "avg_freight_per_order"]
 
@@ -226,21 +278,33 @@ def build_recommendation_text(
             f"{top['gmv_uplift_pct']:.1f}% GMV uplift in campaign months."
         )
 
+    avg_apply_rate = policy_sim["apply_rate"].mean() if not policy_sim.empty else np.nan
+    avg_subsidy = (
+        policy_sim["subsidy_cost_estimate"].sum() / policy_sim["gmv"].sum() * 100
+        if not policy_sim.empty and policy_sim["gmv"].sum() > 0
+        else np.nan
+    )
+
     recommendation = f"""
 [HK Free Shipping Strategy Recommendation]
 1) Freight vs Orders correlation: {corr_ship_order:.3f} (negative is better for free-shipping rationale).
 2) Free-shipping orders have {gmv_delta_pct:.1f}% higher average order GMV than paid-shipping orders.
 3) Review score delta (Free - Paid): {review_delta:.3f}, and t-test is {sig} (p={p_val:.4g}).
 4) {seller_line}
+5) HK simulation average apply-rate: {avg_apply_rate:.2%}.
+6) Estimated subsidy burden ratio: {avg_subsidy:.2f}% of GMV.
 
 Action:
 - Run a 2-month pilot in Hong Kong with threshold-based free shipping.
 - Set subsidy caps by distance and item weight.
-- Monitor post-campaign retention to avoid June-like drop after promotion.
+- Track post-campaign retention and repeat purchase rate before full rollout.
 """.strip()
     return recommendation
 
 
+# ------------------------------
+# Main execution
+# ------------------------------
 def main() -> None:
     args = parse_args()
     outdir = Path(args.outdir)
@@ -248,21 +312,30 @@ def main() -> None:
 
     engine = build_engine(args)
 
-    monthly, corr_input, order_review, seller_monthly = fetch_dataframes(engine)
+    monthly, corr_input, order_review, seller_monthly, policy_sim = fetch_dataframes(engine)
 
     corr_df = correlation_analysis(corr_input)
     uplift_df = uplift_analysis(order_review)
+    sim_uplift_df = simulation_uplift_analysis(order_review)
     ttest_df = ttest_analysis(order_review)
     seller_uplift_df = detect_campaign_sellers(seller_monthly)
 
-    recommendation = build_recommendation_text(corr_df, uplift_df, ttest_df, seller_uplift_df)
+    recommendation = build_recommendation_text(
+        corr_df,
+        uplift_df,
+        ttest_df,
+        seller_uplift_df,
+        policy_sim,
+    )
 
     monthly.to_csv(outdir / "monthly_kpi.csv", index=False)
     corr_input.to_csv(outdir / "monthly_corr_input.csv", index=False)
     corr_df.to_csv(outdir / "correlation_matrix.csv")
     uplift_df.to_csv(outdir / "shipping_segment_uplift.csv", index=False)
+    sim_uplift_df.to_csv(outdir / "hk_policy_eligibility_uplift.csv", index=False)
     ttest_df.to_csv(outdir / "ttest_review_score.csv", index=False)
     seller_uplift_df.to_csv(outdir / "seller_campaign_uplift.csv", index=False)
+    policy_sim.to_csv(outdir / "hk_policy_monthly_simulation.csv", index=False)
 
     (outdir / "recommendation.txt").write_text(recommendation, encoding="utf-8")
 
