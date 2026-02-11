@@ -52,9 +52,9 @@ Because Olist is Brazil-based data, we define a **market localization layer** fo
 1. Create raw tables.
 2. Load CSVs with `LOAD DATA LOCAL INFILE`.
 3. Build analytical marts:
-   - `marts.fact_order_item_enriched`
-   - `marts.agg_monthly_kpi`
-   - `marts.agg_seller_monthly_kpi`
+   - `fact_order_item_enriched`
+   - `agg_monthly_kpi`
+   - `agg_seller_monthly_kpi`
 4. Add distance (Haversine), delivery duration, freight ratio, free-shipping flags.
 
 ### Step B. Exploratory + Causal-leaning Analysis in Python
@@ -101,8 +101,7 @@ mysql -u <user> -p
 ```
 
 ```sql
--- If you already initialized/loading with your own raw-layer script, skip 01.
--- SOURCE projects/olist-hk-free-shipping/sql/01_schema_and_load.sql;
+SOURCE projects/olist-hk-free-shipping/sql/01_schema_and_load.sql;
 SOURCE projects/olist-hk-free-shipping/sql/02_feature_mart.sql;
 SOURCE projects/olist-hk-free-shipping/sql/03_analysis_queries.sql;
 ```
@@ -113,7 +112,7 @@ cd projects/olist-hk-free-shipping/python
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-python analysis_free_shipping_hk.py --host localhost --port 3306 --user root --password '<pw>' --database olist_portfolio
+python analysis_free_shipping_hk.py --host localhost --port 3306 --user root --password '<pw>' --database olist_hk
 ```
 
 Outputs are written to:
