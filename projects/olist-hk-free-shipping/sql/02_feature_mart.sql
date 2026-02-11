@@ -36,6 +36,7 @@ ALTER TABLE marts.dim_zip_geo
 Why split this from final mart:
 - Easier to validate joins and null patterns before adding complex formulas.
 - Avoids debugging huge SQL blocks when one dimension table has data quality issues.
+- Also sanitizes legacy zero-datetime values to NULL before downstream calculations.
 */
 DROP TABLE IF EXISTS marts.stg_order_item_joined;
 CREATE TABLE marts.stg_order_item_joined AS
@@ -46,11 +47,11 @@ SELECT
   oi.seller_id,
   o.customer_id,
   o.order_status,
-  o.order_purchase_timestamp,
-  o.order_approved_at,
-  o.order_delivered_carrier_date,
-  o.order_delivered_customer_date,
-  o.order_estimated_delivery_date,
+  NULLIF(o.order_purchase_timestamp, '0000-00-00 00:00:00') AS order_purchase_timestamp,
+  NULLIF(o.order_approved_at, '0000-00-00 00:00:00') AS order_approved_at,
+  NULLIF(o.order_delivered_carrier_date, '0000-00-00 00:00:00') AS order_delivered_carrier_date,
+  NULLIF(o.order_delivered_customer_date, '0000-00-00 00:00:00') AS order_delivered_customer_date,
+  NULLIF(o.order_estimated_delivery_date, '0000-00-00 00:00:00') AS order_estimated_delivery_date,
   c.customer_zip_code_prefix,
   c.customer_city,
   c.customer_state,
@@ -76,7 +77,7 @@ LEFT JOIN raw.olist_products p
   ON oi.product_id = p.product_id
 LEFT JOIN raw.product_category_name_translation pct
   ON p.product_category_name = pct.product_category_name
-WHERE o.order_purchase_timestamp IS NOT NULL;
+WHERE NULLIF(o.order_purchase_timestamp, '0000-00-00 00:00:00') IS NOT NULL;
 ALTER TABLE marts.stg_order_item_joined
   ADD KEY idx_stg_order_id (order_id),
   ADD KEY idx_stg_month_ts (order_purchase_timestamp),

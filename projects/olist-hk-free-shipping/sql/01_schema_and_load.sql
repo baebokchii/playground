@@ -9,7 +9,6 @@
 -- 2) Separating RAW / MARTS / ANALYTICS keeps data lineage clear for interviews and maintenance.
 -- 3) Loading CSV explicitly with column variables helps avoid silent type-casting mistakes.
 -- ==================================================================================================
-
 /*
 [Chunk A] Environment pre-checks
 - We verify/enable LOCAL INFILE because many local MySQL clients disable it by default.
@@ -17,7 +16,6 @@
 */
 SET @old_local_infile := @@GLOBAL.local_infile;
 SET GLOBAL local_infile = 1;
-
 /*
 [Chunk B] Create database and schemas
 - Keep the same database name you already used: olist_portfolio.
@@ -32,13 +30,6 @@ CREATE SCHEMA IF NOT EXISTS raw;
 CREATE SCHEMA IF NOT EXISTS marts;
 CREATE SCHEMA IF NOT EXISTS analytics;
 USE olist_portfolio;
-
-CREATE SCHEMA IF NOT EXISTS raw;
-CREATE SCHEMA IF NOT EXISTS marts;
-CREATE SCHEMA IF NOT EXISTS analytics;
-
-USE olist_portfolio;
-
 /*
 [Chunk C] Raw table lifecycle strategy
 - For education and reproducibility we explicitly DROP+CREATE raw tables.
@@ -53,7 +44,6 @@ DROP TABLE IF EXISTS raw.olist_order_reviews;
 DROP TABLE IF EXISTS raw.olist_order_payments;
 DROP TABLE IF EXISTS raw.olist_order_items;
 DROP TABLE IF EXISTS raw.olist_orders;
-
 /*
 [Chunk D] Create RAW tables (1:1 with source CSV structure)
 - Keep data types permissive enough for ingestion stability.
@@ -75,7 +65,6 @@ CREATE TABLE raw.olist_orders (
   KEY idx_orders_delivered_customer (order_delivered_customer_date),
   KEY idx_orders_estimated_delivery (order_estimated_delivery_date)
 ) ENGINE=InnoDB;
-
 CREATE TABLE raw.olist_order_items (
   order_id VARCHAR(64) NOT NULL,
   order_item_id INT NOT NULL,
@@ -88,7 +77,6 @@ CREATE TABLE raw.olist_order_items (
   KEY idx_items_product_id (product_id),
   KEY idx_items_seller_id (seller_id)
 ) ENGINE=InnoDB;
-
 CREATE TABLE raw.olist_order_payments (
   order_id VARCHAR(64) NOT NULL,
   payment_sequential INT NOT NULL,
@@ -98,7 +86,6 @@ CREATE TABLE raw.olist_order_payments (
   PRIMARY KEY (order_id, payment_sequential),
   KEY idx_payments_type (payment_type)
 ) ENGINE=InnoDB;
-
 CREATE TABLE raw.olist_order_reviews (
   review_id VARCHAR(64) NOT NULL,
   order_id VARCHAR(64) NOT NULL,
@@ -111,7 +98,6 @@ CREATE TABLE raw.olist_order_reviews (
   KEY idx_reviews_order_id (order_id),
   KEY idx_reviews_score (review_score)
 ) ENGINE=InnoDB;
-
 CREATE TABLE raw.olist_customers (
   customer_id VARCHAR(64) NOT NULL,
   customer_unique_id VARCHAR(64) NOT NULL,
@@ -122,7 +108,6 @@ CREATE TABLE raw.olist_customers (
   KEY idx_customers_unique (customer_unique_id),
   KEY idx_customers_state (customer_state)
 ) ENGINE=InnoDB;
-
 CREATE TABLE raw.olist_sellers (
   seller_id VARCHAR(64) NOT NULL,
   seller_zip_code_prefix INT NULL,
@@ -131,7 +116,6 @@ CREATE TABLE raw.olist_sellers (
   PRIMARY KEY (seller_id),
   KEY idx_sellers_state (seller_state)
 ) ENGINE=InnoDB;
-
 CREATE TABLE raw.olist_products (
   product_id VARCHAR(64) NOT NULL,
   product_category_name VARCHAR(255) NULL,
@@ -145,7 +129,6 @@ CREATE TABLE raw.olist_products (
   PRIMARY KEY (product_id),
   KEY idx_products_category (product_category_name)
 ) ENGINE=InnoDB;
-
 CREATE TABLE raw.olist_geolocation (
   geolocation_id BIGINT NOT NULL AUTO_INCREMENT,
   geolocation_zip_code_prefix INT NULL,
@@ -157,17 +140,16 @@ CREATE TABLE raw.olist_geolocation (
   KEY idx_geo_zip (geolocation_zip_code_prefix),
   KEY idx_geo_state (geolocation_state)
 ) ENGINE=InnoDB;
-
 CREATE TABLE raw.product_category_name_translation (
   product_category_name VARCHAR(255) NOT NULL,
   product_category_name_english VARCHAR(255) NULL,
   PRIMARY KEY (product_category_name)
 ) ENGINE=InnoDB;
-
 /*
 [Chunk E] CSV loading templates
 - Replace /absolute/path/... with your machine path.
 - NULLIF(@col,'') converts blank strings into SQL NULL (important for date arithmetic later).
+- We also coerce '0000-00-00 00:00:00' to NULL to avoid strict-mode DATETIME errors.
 - STR_TO_DATE can be used if your CSV date format differs from MySQL DATETIME default.
 */
 LOAD DATA LOCAL INFILE '/absolute/path/olist_orders_dataset.csv'
@@ -180,12 +162,11 @@ SET
   order_id = @order_id,
   customer_id = @customer_id,
   order_status = @order_status,
-  order_purchase_timestamp = NULLIF(@purchase_ts, ''),
-  order_approved_at = NULLIF(@approved_at, ''),
-  order_delivered_carrier_date = NULLIF(@carrier_dt, ''),
-  order_delivered_customer_date = NULLIF(@customer_dt, ''),
-  order_estimated_delivery_date = NULLIF(@estimated_dt, '');
-
+  order_purchase_timestamp = NULLIF(NULLIF(@purchase_ts, ''), '0000-00-00 00:00:00'),
+  order_approved_at = NULLIF(NULLIF(@approved_at, ''), '0000-00-00 00:00:00'),
+  order_delivered_carrier_date = NULLIF(NULLIF(@carrier_dt, ''), '0000-00-00 00:00:00'),
+  order_delivered_customer_date = NULLIF(NULLIF(@customer_dt, ''), '0000-00-00 00:00:00'),
+  order_estimated_delivery_date = NULLIF(NULLIF(@estimated_dt, ''), '0000-00-00 00:00:00');
 LOAD DATA LOCAL INFILE '/absolute/path/olist_order_items_dataset.csv'
 INTO TABLE raw.olist_order_items
 FIELDS TERMINATED BY ',' ENCLOSED BY '"'
@@ -197,16 +178,14 @@ SET
   order_item_id = NULLIF(@order_item_id, ''),
   product_id = @product_id,
   seller_id = @seller_id,
-  shipping_limit_date = NULLIF(@shipping_limit_date, ''),
+  shipping_limit_date = NULLIF(NULLIF(@shipping_limit_date, ''), '0000-00-00 00:00:00'),
   price = NULLIF(@price, ''),
   freight_value = NULLIF(@freight_value, '');
-
 LOAD DATA LOCAL INFILE '/absolute/path/olist_order_payments_dataset.csv'
 INTO TABLE raw.olist_order_payments
 FIELDS TERMINATED BY ',' ENCLOSED BY '"'
 LINES TERMINATED BY '\n'
 IGNORE 1 LINES;
-
 LOAD DATA LOCAL INFILE '/absolute/path/olist_order_reviews_dataset.csv'
 INTO TABLE raw.olist_order_reviews
 FIELDS TERMINATED BY ',' ENCLOSED BY '"'
@@ -219,27 +198,23 @@ SET
   review_score = NULLIF(@review_score, ''),
   review_comment_title = NULLIF(@review_comment_title, ''),
   review_comment_message = NULLIF(@review_comment_message, ''),
-  review_creation_date = NULLIF(@review_creation_date, ''),
-  review_answer_timestamp = NULLIF(@review_answer_timestamp, '');
-
+  review_creation_date = NULLIF(NULLIF(@review_creation_date, ''), '0000-00-00 00:00:00'),
+  review_answer_timestamp = NULLIF(NULLIF(@review_answer_timestamp, ''), '0000-00-00 00:00:00');
 LOAD DATA LOCAL INFILE '/absolute/path/olist_customers_dataset.csv'
 INTO TABLE raw.olist_customers
 FIELDS TERMINATED BY ',' ENCLOSED BY '"'
 LINES TERMINATED BY '\n'
 IGNORE 1 LINES;
-
 LOAD DATA LOCAL INFILE '/absolute/path/olist_sellers_dataset.csv'
 INTO TABLE raw.olist_sellers
 FIELDS TERMINATED BY ',' ENCLOSED BY '"'
 LINES TERMINATED BY '\n'
 IGNORE 1 LINES;
-
 LOAD DATA LOCAL INFILE '/absolute/path/olist_products_dataset.csv'
 INTO TABLE raw.olist_products
 FIELDS TERMINATED BY ',' ENCLOSED BY '"'
 LINES TERMINATED BY '\n'
 IGNORE 1 LINES;
-
 LOAD DATA LOCAL INFILE '/absolute/path/olist_geolocation_dataset.csv'
 INTO TABLE raw.olist_geolocation
 FIELDS TERMINATED BY ',' ENCLOSED BY '"'
@@ -252,13 +227,11 @@ SET
   geolocation_lng = NULLIF(@lng, ''),
   geolocation_city = NULLIF(@city, ''),
   geolocation_state = NULLIF(@state, '');
-
 LOAD DATA LOCAL INFILE '/absolute/path/product_category_name_translation.csv'
 INTO TABLE raw.product_category_name_translation
 FIELDS TERMINATED BY ',' ENCLOSED BY '"'
 LINES TERMINATED BY '\n'
 IGNORE 1 LINES;
-
 /*
 [Chunk F] Post-load integrity checks
 - Row counts ensure all files loaded.
@@ -273,12 +246,10 @@ UNION ALL SELECT 'raw.olist_sellers', COUNT(*) FROM raw.olist_sellers
 UNION ALL SELECT 'raw.olist_products', COUNT(*) FROM raw.olist_products
 UNION ALL SELECT 'raw.olist_geolocation', COUNT(*) FROM raw.olist_geolocation
 UNION ALL SELECT 'raw.product_category_name_translation', COUNT(*) FROM raw.product_category_name_translation;
-
 SELECT
   COUNT(*) AS orders_total,
   COUNT(DISTINCT order_id) AS orders_distinct,
   COUNT(*) - COUNT(DISTINCT order_id) AS duplicate_order_ids
 FROM raw.olist_orders;
-
 -- Optional: restore prior GLOBAL setting (comment out if you prefer to keep enabled).
 -- SET GLOBAL local_infile = @old_local_infile;
