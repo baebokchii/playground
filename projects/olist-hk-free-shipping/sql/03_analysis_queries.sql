@@ -4,9 +4,7 @@
 -- Goal    : Produce interview-ready analysis outputs validating free-shipping feasibility.
 -- DB      : olist_portfolio (source: marts, output helpers: analytics)
 -- ==================================================================================================
-
 USE olist_portfolio;
-
 /*
 [Chunk A] Monthly baseline trend (core storyline)
 Why this is first:
@@ -25,7 +23,6 @@ SELECT
   free_shipping_order_rate
 FROM marts.agg_monthly_kpi
 ORDER BY order_month;
-
 /*
 [Chunk B] Free shipping occurrence trend
 - Shows whether "natural experiments" already exist in historical data.
@@ -39,7 +36,6 @@ FROM marts.order_review_metrics
 WHERE is_free_shipping_order = 1
 GROUP BY order_month
 ORDER BY order_month;
-
 /*
 [Chunk C] Campaign-like seller month detection
 Rule logic (editable):
@@ -59,11 +55,9 @@ SELECT
 FROM marts.agg_seller_monthly_kpi
 WHERE free_shipping_item_rate >= 0.8
   AND orders >= 30;
-
 SELECT *
 FROM analytics.v_campaign_like_seller_month
 ORDER BY order_month, orders DESC;
-
 /*
 [Chunk D] Segment comparison: campaign-like vs non-campaign
 - Helps answer "did those campaign-like periods perform better?"
@@ -83,7 +77,6 @@ LEFT JOIN analytics.v_campaign_like_seller_month c
   ON f.seller_id = c.seller_id
  AND f.order_month = c.order_month
 GROUP BY 1;
-
 /*
 [Chunk E] Customer sentiment check (review score)
 - Free shipping can be justified not only by volume but also by better CX signals.
@@ -98,7 +91,6 @@ SELECT
 FROM marts.order_review_metrics
 WHERE review_score IS NOT NULL
 GROUP BY 1;
-
 /*
 [Chunk F] Correlation input view for Python
 - Keep modeling input in a stable view so notebook/script queries stay simple.
@@ -115,11 +107,9 @@ SELECT
   free_shipping_order_rate,
   hk_sim_apply_rate
 FROM marts.agg_monthly_kpi;
-
 SELECT *
 FROM analytics.v_monthly_corr_input
 ORDER BY order_month;
-
 /*
 [Chunk G] HK policy simulation (threshold + distance cap)
 - This is the main policy what-if analysis.
@@ -127,7 +117,6 @@ ORDER BY order_month;
 */
 SET @threshold_hkd = 120;
 SET @distance_cap_km = 15;
-
 DROP TABLE IF EXISTS analytics.sim_hk_policy_monthly;
 CREATE TABLE analytics.sim_hk_policy_monthly AS
 WITH simulated AS (
@@ -155,11 +144,9 @@ SELECT
   AVG(simulate_free_ship) AS apply_rate
 FROM simulated
 GROUP BY order_month;
-
 SELECT *
 FROM analytics.sim_hk_policy_monthly
 ORDER BY order_month;
-
 /*
 [Chunk H] Seller before/after diagnostic table
 - Useful to discuss retention risk after free-shipping campaign windows.
@@ -182,7 +169,6 @@ WHERE sm.seller_id IN (
   SELECT DISTINCT seller_id
   FROM analytics.v_campaign_like_seller_month
 );
-
 SELECT *
 FROM analytics.seller_campaign_timeline
 ORDER BY seller_id, order_month;

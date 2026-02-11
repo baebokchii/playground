@@ -9,9 +9,7 @@
 -- - We then aggregate to order and month levels for KPI views and modeling inputs.
 -- - Every step is broken into small chunks so learning/debugging is easier.
 -- ==================================================================================================
-
 USE olist_portfolio;
-
 /*
 [Chunk A] Prepare ZIP-level geolocation lookup
 Why this exists:
@@ -30,11 +28,9 @@ SELECT
 FROM raw.olist_geolocation
 WHERE geolocation_zip_code_prefix IS NOT NULL
 GROUP BY geolocation_zip_code_prefix;
-
 ALTER TABLE marts.dim_zip_geo
   ADD PRIMARY KEY (zip_code_prefix),
   ADD KEY idx_dim_zip_geo_point_count (point_count);
-
 /*
 [Chunk B] Build base join table before feature engineering
 Why split this from final mart:
@@ -49,25 +45,20 @@ SELECT
   oi.product_id,
   oi.seller_id,
   o.customer_id,
-
   o.order_status,
   o.order_purchase_timestamp,
   o.order_approved_at,
   o.order_delivered_carrier_date,
   o.order_delivered_customer_date,
   o.order_estimated_delivery_date,
-
   c.customer_zip_code_prefix,
   c.customer_city,
   c.customer_state,
-
   s.seller_zip_code_prefix,
   s.seller_city,
   s.seller_state,
-
   oi.price,
   oi.freight_value,
-
   p.product_category_name,
   pct.product_category_name_english,
   p.product_weight_g,
@@ -86,13 +77,11 @@ LEFT JOIN raw.olist_products p
 LEFT JOIN raw.product_category_name_translation pct
   ON p.product_category_name = pct.product_category_name
 WHERE o.order_purchase_timestamp IS NOT NULL;
-
 ALTER TABLE marts.stg_order_item_joined
   ADD KEY idx_stg_order_id (order_id),
   ADD KEY idx_stg_month_ts (order_purchase_timestamp),
   ADD KEY idx_stg_seller_id (seller_id),
   ADD KEY idx_stg_customer_id (customer_id);
-
 /*
 [Chunk C] Build final item-grain fact table with engineered features
 Feature rationale:
@@ -106,13 +95,11 @@ DROP TABLE IF EXISTS marts.fact_order_item_enriched;
 CREATE TABLE marts.fact_order_item_enriched AS
 SELECT
   b.*,
-
   -- Join averaged geo coordinates for distance approximation.
   cz.lat AS customer_lat,
   cz.lng AS customer_lng,
   sz.lat AS seller_lat,
   sz.lng AS seller_lng,
-
   -- Haversine distance in KM: valid when both endpoints are available.
   CASE
     WHEN cz.lat IS NULL OR cz.lng IS NULL OR sz.lat IS NULL OR sz.lng IS NULL THEN NULL
@@ -124,32 +111,26 @@ SELECT
       )
     )
   END AS distance_km,
-
   -- Delivery duration from purchase to customer delivery.
   CASE
     WHEN b.order_delivered_customer_date IS NULL OR b.order_purchase_timestamp IS NULL THEN NULL
     ELSE TIMESTAMPDIFF(DAY, b.order_purchase_timestamp, b.order_delivered_customer_date)
   END AS delivery_days,
-
   -- Delay vs estimated date: positive = late, negative = early.
   CASE
     WHEN b.order_delivered_customer_date IS NULL OR b.order_estimated_delivery_date IS NULL THEN NULL
     ELSE DATEDIFF(b.order_delivered_customer_date, b.order_estimated_delivery_date)
   END AS delivery_delay_days,
-
   -- Freight burden relative to item value.
   CASE
     WHEN b.price IS NULL OR b.price <= 0 OR b.freight_value IS NULL THEN NULL
     ELSE b.freight_value / b.price
   END AS freight_price_ratio,
-
   CASE
     WHEN IFNULL(b.freight_value, 0) = 0 THEN 1 ELSE 0
   END AS is_free_shipping_item,
-
   -- Month key for trend and cohort analysis.
   DATE_FORMAT(b.order_purchase_timestamp, '%Y-%m') AS order_month,
-
   -- HK localization helper buckets for policy segmentation.
   CASE
     WHEN b.product_weight_g IS NULL THEN 'unknown'
@@ -157,7 +138,6 @@ SELECT
     WHEN b.product_weight_g < 2000 THEN 'medium'
     ELSE 'heavy'
   END AS hk_weight_band,
-
   CASE
     WHEN b.price IS NULL THEN 'unknown'
     WHEN b.price < 50 THEN 'A_0_49'
@@ -170,7 +150,6 @@ LEFT JOIN marts.dim_zip_geo cz
   ON b.customer_zip_code_prefix = cz.zip_code_prefix
 LEFT JOIN marts.dim_zip_geo sz
   ON b.seller_zip_code_prefix = sz.zip_code_prefix;
-
 ALTER TABLE marts.fact_order_item_enriched
   ADD KEY idx_fact_order_id (order_id),
   ADD KEY idx_fact_month (order_month),
@@ -179,7 +158,6 @@ ALTER TABLE marts.fact_order_item_enriched
   ADD KEY idx_fact_distance (distance_km),
   ADD KEY idx_fact_weight_band (hk_weight_band),
   ADD KEY idx_fact_price_band (hk_price_band);
-
 /*
 [Chunk D] Order-grain metrics table
 Why aggregate from item -> order:
@@ -194,7 +172,6 @@ SELECT
   MIN(order_purchase_timestamp) AS order_purchase_timestamp,
   MIN(order_status) AS order_status,
   MIN(customer_id) AS customer_id,
-
   SUM(IFNULL(price, 0)) AS order_gmv,
   SUM(IFNULL(freight_value, 0)) AS order_freight,
   AVG(delivery_days) AS avg_delivery_days,
@@ -202,9 +179,7 @@ SELECT
   AVG(distance_km) AS avg_distance_km,
   AVG(freight_price_ratio) AS avg_freight_ratio,
   SUM(IFNULL(product_weight_g, 0)) AS total_weight_g,
-
   CASE WHEN SUM(IFNULL(freight_value, 0)) = 0 THEN 1 ELSE 0 END AS is_free_shipping_order,
-
   -- Example HK strategy switch: threshold + distance cap.
   CASE
     WHEN SUM(IFNULL(price, 0)) >= 120
@@ -213,13 +188,11 @@ SELECT
   END AS hk_sim_free_ship_flag
 FROM marts.fact_order_item_enriched
 GROUP BY order_id;
-
 ALTER TABLE marts.order_level_metrics
   ADD PRIMARY KEY (order_id),
   ADD KEY idx_olm_month (order_month),
   ADD KEY idx_olm_free_order (is_free_shipping_order),
   ADD KEY idx_olm_sim_flag (hk_sim_free_ship_flag);
-
 /*
 [Chunk E] Join review signals to order metrics
 Why average review at order_id:
@@ -238,11 +211,9 @@ LEFT JOIN (
   GROUP BY order_id
 ) rv
   ON olm.order_id = rv.order_id;
-
 ALTER TABLE marts.order_review_metrics
   ADD KEY idx_orm_month (order_month),
   ADD KEY idx_orm_review (review_score);
-
 /*
 [Chunk F] Monthly KPI mart (required deliverable)
 - This table is compact and BI/dashboard friendly.
@@ -264,10 +235,8 @@ SELECT
   AVG(hk_sim_free_ship_flag) AS hk_sim_apply_rate
 FROM marts.order_review_metrics
 GROUP BY order_month;
-
 ALTER TABLE marts.agg_monthly_kpi
   ADD PRIMARY KEY (order_month);
-
 /*
 [Chunk G] Seller-month KPI mart (required deliverable)
 - Helps identify campaign-like seller behavior and compare uplift.
@@ -287,12 +256,10 @@ SELECT
   AVG(CASE WHEN hk_weight_band = 'heavy' THEN 1 ELSE 0 END) AS heavy_item_mix_rate
 FROM marts.fact_order_item_enriched
 GROUP BY seller_id, order_month;
-
 ALTER TABLE marts.agg_seller_monthly_kpi
   ADD PRIMARY KEY (seller_id, order_month),
   ADD KEY idx_asmk_month (order_month),
   ADD KEY idx_asmk_free_ship_rate (free_shipping_item_rate);
-
 /*
 [Chunk H] Lightweight QA checks for mart build
 - These checks help you confirm mart freshness and cardinality quality.
