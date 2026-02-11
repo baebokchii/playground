@@ -1,24 +1,30 @@
 -- ============================================================
 -- 02_feature_mart.sql
--- Purpose: Build enriched fact table + monthly aggregates
+-- Purpose: Build curated marts from raw layer tables
+-- Compatible with initialization that creates raw/marts/analytics schemas
+-- Idempotent: safe to re-run
 -- ============================================================
 
-USE olist_hk;
+CREATE DATABASE IF NOT EXISTS marts
+  CHARACTER SET utf8mb4
+  COLLATE utf8mb4_0900_ai_ci;
 
-DROP TABLE IF EXISTS zip_geo;
-CREATE TABLE zip_geo AS
+-- Helper zip centroid table in marts layer
+DROP TABLE IF EXISTS marts.zip_geo;
+CREATE TABLE marts.zip_geo AS
 SELECT
     geolocation_zip_code_prefix AS zip_code_prefix,
     AVG(geolocation_lat) AS lat,
     AVG(geolocation_lng) AS lng
-FROM geolocation
+FROM raw.olist_geolocation
 GROUP BY geolocation_zip_code_prefix;
 
-ALTER TABLE zip_geo
+ALTER TABLE marts.zip_geo
 ADD PRIMARY KEY (zip_code_prefix);
 
-DROP TABLE IF EXISTS fact_order_item_enriched;
-CREATE TABLE fact_order_item_enriched AS
+-- Main enriched item-level fact
+DROP TABLE IF EXISTS marts.fact_order_item_enriched;
+CREATE TABLE marts.fact_order_item_enriched AS
 SELECT
     oi.order_id,
     oi.order_item_id,
@@ -46,18 +52,18 @@ SELECT
     p.product_height_cm,
     p.product_width_cm,
 
-    zr.lat AS customer_lat,
-    zr.lng AS customer_lng,
-    zs.lat AS seller_lat,
-    zs.lng AS seller_lng,
+    zg_c.lat AS customer_lat,
+    zg_c.lng AS customer_lng,
+    zg_s.lat AS seller_lat,
+    zg_s.lng AS seller_lng,
 
     CASE
-        WHEN zr.lat IS NULL OR zr.lng IS NULL OR zs.lat IS NULL OR zs.lng IS NULL THEN NULL
+        WHEN zg_c.lat IS NULL OR zg_c.lng IS NULL OR zg_s.lat IS NULL OR zg_s.lng IS NULL THEN NULL
         ELSE 6371 * 2 * ASIN(
             SQRT(
-                POWER(SIN(RADIANS((zr.lat - zs.lat) / 2)), 2)
-                + COS(RADIANS(zs.lat)) * COS(RADIANS(zr.lat))
-                * POWER(SIN(RADIANS((zr.lng - zs.lng) / 2)), 2)
+                POWER(SIN(RADIANS((zg_c.lat - zg_s.lat) / 2)), 2)
+                + COS(RADIANS(zg_s.lat)) * COS(RADIANS(zg_c.lat))
+                * POWER(SIN(RADIANS((zg_c.lng - zg_s.lng) / 2)), 2)
             )
         )
     END AS distance_km,
@@ -78,26 +84,27 @@ SELECT
     END AS freight_price_ratio,
 
     DATE_FORMAT(o.order_purchase_timestamp, '%Y-%m') AS order_month
-
-FROM order_items oi
-JOIN orders o ON oi.order_id = o.order_id
-LEFT JOIN customers c ON o.customer_id = c.customer_id
-LEFT JOIN sellers s ON oi.seller_id = s.seller_id
-LEFT JOIN products p ON oi.product_id = p.product_id
-LEFT JOIN product_category_translation pct
+FROM raw.olist_order_items oi
+JOIN raw.olist_orders o ON oi.order_id = o.order_id
+LEFT JOIN raw.olist_customers c ON o.customer_id = c.customer_id
+LEFT JOIN raw.olist_sellers s ON oi.seller_id = s.seller_id
+LEFT JOIN raw.olist_products p ON oi.product_id = p.product_id
+LEFT JOIN raw.product_category_name_translation pct
     ON p.product_category_name = pct.product_category_name
-LEFT JOIN zip_geo zr ON c.customer_zip_code_prefix = zr.zip_code_prefix
-LEFT JOIN zip_geo zs ON s.seller_zip_code_prefix = zs.zip_code_prefix
+LEFT JOIN marts.zip_geo zg_c ON c.customer_zip_code_prefix = zg_c.zip_code_prefix
+LEFT JOIN marts.zip_geo zg_s ON s.seller_zip_code_prefix = zg_s.zip_code_prefix
 WHERE o.order_purchase_timestamp IS NOT NULL;
 
-ALTER TABLE fact_order_item_enriched
+ALTER TABLE marts.fact_order_item_enriched
 ADD INDEX idx_fact_month (order_month),
 ADD INDEX idx_fact_order_id (order_id),
 ADD INDEX idx_fact_seller_id (seller_id),
-ADD INDEX idx_fact_free_ship (is_free_shipping_item);
+ADD INDEX idx_fact_free_ship (is_free_shipping_item),
+ADD INDEX idx_fact_order_status (order_status);
 
-DROP TABLE IF EXISTS order_level_metrics;
-CREATE TABLE order_level_metrics AS
+-- Order-level marts
+DROP TABLE IF EXISTS marts.order_level_metrics;
+CREATE TABLE marts.order_level_metrics AS
 SELECT
     f.order_id,
     MIN(f.order_month) AS order_month,
@@ -111,31 +118,32 @@ SELECT
     AVG(f.distance_km) AS avg_distance_km,
     AVG(f.freight_price_ratio) AS avg_freight_ratio,
     CASE WHEN SUM(f.freight_value) = 0 THEN 1 ELSE 0 END AS is_free_shipping_order
-FROM fact_order_item_enriched f
+FROM marts.fact_order_item_enriched f
 GROUP BY f.order_id;
 
-ALTER TABLE order_level_metrics
+ALTER TABLE marts.order_level_metrics
 ADD PRIMARY KEY (order_id),
 ADD INDEX idx_order_metrics_month (order_month),
-ADD INDEX idx_order_metrics_freeship (is_free_shipping_order);
+ADD INDEX idx_order_metrics_freeship (is_free_shipping_order),
+ADD INDEX idx_order_metrics_status (order_status);
 
-DROP TABLE IF EXISTS order_review_metrics;
-CREATE TABLE order_review_metrics AS
+DROP TABLE IF EXISTS marts.order_review_metrics;
+CREATE TABLE marts.order_review_metrics AS
 SELECT
-    olm.*, 
-    r.review_score
-FROM order_level_metrics olm
+    olm.*,
+    rv.review_score
+FROM marts.order_level_metrics olm
 LEFT JOIN (
     SELECT order_id, AVG(review_score) AS review_score
-    FROM order_reviews
+    FROM raw.olist_order_reviews
     GROUP BY order_id
-) r ON olm.order_id = r.order_id;
+) rv ON olm.order_id = rv.order_id;
 
-ALTER TABLE order_review_metrics
+ALTER TABLE marts.order_review_metrics
 ADD INDEX idx_order_review_month (order_month);
 
-DROP TABLE IF EXISTS agg_monthly_kpi;
-CREATE TABLE agg_monthly_kpi AS
+DROP TABLE IF EXISTS marts.agg_monthly_kpi;
+CREATE TABLE marts.agg_monthly_kpi AS
 SELECT
     order_month,
     COUNT(*) AS orders,
@@ -147,11 +155,11 @@ SELECT
     AVG(avg_freight_ratio) AS avg_freight_ratio,
     AVG(review_score) AS avg_review_score,
     AVG(is_free_shipping_order) AS free_shipping_order_rate
-FROM order_review_metrics
+FROM marts.order_review_metrics
 GROUP BY order_month;
 
-DROP TABLE IF EXISTS agg_seller_monthly_kpi;
-CREATE TABLE agg_seller_monthly_kpi AS
+DROP TABLE IF EXISTS marts.agg_seller_monthly_kpi;
+CREATE TABLE marts.agg_seller_monthly_kpi AS
 SELECT
     seller_id,
     order_month,
@@ -162,5 +170,5 @@ SELECT
     AVG(delivery_days) AS avg_delivery_days,
     AVG(distance_km) AS avg_distance_km,
     AVG(CASE WHEN freight_value = 0 THEN 1 ELSE 0 END) AS free_shipping_item_rate
-FROM fact_order_item_enriched
+FROM marts.fact_order_item_enriched
 GROUP BY seller_id, order_month;

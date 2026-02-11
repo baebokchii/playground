@@ -3,7 +3,7 @@ End-to-end analysis runner for Olist HK free shipping strategy.
 
 Usage example:
 python analysis_free_shipping_hk.py \
-  --host localhost --port 3306 --user root --password 'pw' --database olist_hk
+  --host localhost --port 3306 --user root --password 'pw' --database olist_portfolio
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--port", default=3306, type=int)
     parser.add_argument("--user", required=True)
     parser.add_argument("--password", required=True)
-    parser.add_argument("--database", default="olist_hk")
+    parser.add_argument("--database", default="olist_portfolio")
     parser.add_argument("--outdir", default="../outputs")
     return parser.parse_args()
 
@@ -40,7 +40,7 @@ def fetch_dataframes(engine):
         text(
             """
             SELECT *
-            FROM agg_monthly_kpi
+            FROM marts.agg_monthly_kpi
             ORDER BY order_month
             """
         ),
@@ -51,7 +51,7 @@ def fetch_dataframes(engine):
         text(
             """
             SELECT *
-            FROM v_monthly_corr_input
+            FROM analytics.v_monthly_corr_input
             ORDER BY order_month
             """
         ),
@@ -70,7 +70,7 @@ def fetch_dataframes(engine):
                 avg_delivery_days,
                 avg_distance_km,
                 review_score
-            FROM order_review_metrics
+            FROM marts.order_review_metrics
             """
         ),
         engine,
@@ -80,7 +80,7 @@ def fetch_dataframes(engine):
         text(
             """
             SELECT *
-            FROM agg_seller_monthly_kpi
+            FROM marts.agg_seller_monthly_kpi
             """
         ),
         engine,
